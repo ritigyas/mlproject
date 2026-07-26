@@ -1,13 +1,58 @@
 from flask import Flask, request, render_template  # type: ignore[import]
 import numpy as np
 import pandas as pd
-
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from src.pipeline.predict_pipeline import CustomData,PredictPipeline
 
 application=Flask(__name__)
 
 app=application
+
+MODELS = [
+    {"name": "Linear Regression", "purpose": "A fast, interpretable baseline for linear relationships.", "advantages": "Simple, explainable, fast", "limitations": "Misses non-linear patterns", "when": "When interpretability and a baseline matter", "complexity": "Low", "params": "fit_intercept"},
+    {"name": "Decision Tree", "purpose": "Learns rule-like, non-linear splits.", "advantages": "Readable rules, no scaling required", "limitations": "Can overfit", "when": "When relationships are non-linear", "complexity": "Medium", "params": "criterion"},
+    {"name": "Random Forest", "purpose": "Averages many trees to improve generalization.", "advantages": "Robust, captures interactions", "limitations": "Less interpretable, heavier", "when": "For strong tabular-data baselines", "complexity": "High", "params": "n_estimators"},
+    {"name": "Gradient Boosting", "purpose": "Builds sequential trees that correct prior errors.", "advantages": "High predictive power", "limitations": "Sensitive to tuning", "when": "When accuracy is a priority", "complexity": "High", "params": "learning_rate, subsample, n_estimators"},
+    {"name": "AdaBoost", "purpose": "Combines weak learners with focus on difficult examples.", "advantages": "Compact boosting baseline", "limitations": "Sensitive to outliers", "when": "For a lightweight boosted model", "complexity": "Medium", "params": "learning_rate, n_estimators"},
+    {"name": "XGBoost", "purpose": "Optimized gradient-boosted trees for tabular data.", "advantages": "Powerful, regularized, scalable", "limitations": "More parameters to tune", "when": "For competitive structured-data models", "complexity": "High", "params": "learning_rate, n_estimators"},
+    {"name": "CatBoost", "purpose": "Gradient boosting with strong categorical-feature support.", "advantages": "Strong defaults, handles categories well", "limitations": "Heavier dependency", "when": "When categorical signals are important", "complexity": "High", "params": "depth, learning_rate, iterations"},
+    {"name": "KNN Regressor", "purpose": "Predicts from nearby training examples.", "advantages": "Simple non-parametric approach", "limitations": "Slow at prediction, scale-sensitive", "when": "For small datasets with local patterns", "complexity": "Medium", "params": "n_neighbors, weights, algorithm"},
+]
+
+PIPELINE_STEPS = [
+    ("Dataset", "Student performance data provides features and the continuous math-score target."),
+    ("Data ingestion", "Read the source CSV, preserve raw data, and write reproducible train/test artifacts."),
+    ("Data validation", "Check schema, data types, missing values, and the target before fitting."),
+    ("Feature engineering", "Select assessment and contextual variables that can explain score variation."),
+    ("Preprocessing pipeline", "Impute missing values, one-hot encode categories, and scale numeric values with ColumnTransformer."),
+    ("Model training", "Fit eight candidate regression algorithms on transformed training data."),
+    ("Hyperparameter tuning", "Use GridSearchCV to choose better configurations through cross-validation."),
+    ("Model evaluation", "Compare held-out predictions with R² and error metrics."),
+    ("Model selection", "Persist the best-scoring candidate as model.pkl."),
+    ("Prediction pipeline", "Reuse the saved preprocessor and model for one consistent inference path."),
+    ("Deployment", "Serve the educational platform and prediction demo through Flask."),
+]
+
+def deployed_metrics():
+    """Calculate transparent metrics for the saved model without changing training code."""
+    try:
+        from src.utils import load_object
+        test_df = pd.read_csv("artifacts/test.csv")
+        features = test_df.drop(columns=["math_score"])
+        target = test_df["math_score"]
+        preprocessor = load_object("artifacts/preprocessor.pkl")
+        model = load_object("artifacts/model.pkl")
+        predictions = model.predict(preprocessor.transform(features))
+        return {
+            "available": True,
+            "r2": round(float(r2_score(target, predictions)), 3),
+            "mae": round(float(mean_absolute_error(target, predictions)), 2),
+            "mse": round(float(mean_squared_error(target, predictions)), 2),
+            "rmse": round(float(mean_squared_error(target, predictions) ** .5), 2),
+            "model": type(model).__name__,
+        }
+    except Exception as error:
+        return {"available": False, "message": str(error)}
 
 LESSONS = {
     "problem-statement": {
@@ -65,7 +110,35 @@ LESSONS = {
 
 @app.route('/')
 def index():
-    return render_template('index.html') 
+    return render_template('index.html')
+
+@app.route('/learn')
+def learning_hub():
+    return render_template('learning.html')
+
+@app.route('/pipeline')
+def pipeline_explorer():
+    return render_template('pipeline.html', steps=PIPELINE_STEPS)
+
+@app.route('/models')
+def model_dashboard():
+    return render_template('models.html', models=MODELS)
+
+@app.route('/evaluation')
+def evaluation_dashboard():
+    return render_template('evaluation.html', metrics=deployed_metrics(), models=MODELS)
+
+@app.route('/architecture')
+def architecture():
+    return render_template('architecture.html')
+
+@app.route('/timeline')
+def timeline():
+    return render_template('timeline.html')
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
 @app.route('/learn/<lesson_slug>')
 def learn(lesson_slug):
